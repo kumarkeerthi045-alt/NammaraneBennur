@@ -1,0 +1,43 @@
+name: namma_ranebennur
+description: "Namma Ranebennur city services, bookings and local marketplace."
+publish_to: 'none'
+
+version: 2.11.3+21103
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  google_fonts: ^8.1.0
+
+  firebase_core: ^4.0.0
+  firebase_auth: ^6.0.0
+  cloud_firestore: ^6.0.0
+  firebase_storage: ^13.0.0
+  firebase_messaging: ^16.0.0
+  cloud_functions: ^6.3.3
+  url_launcher: ^6.3.2
+  geolocator: ^14.0.3
+  geocoding: ^5.0.0
+  google_maps_flutter: ^2.18.0
+  image_picker: ^1.2.3
+  share_plus: ^13.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+  firebase_auth_mocks: ^0.15.2
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/images/app/
+    - assets/images/home-services/
+    - assets/images/machinery/

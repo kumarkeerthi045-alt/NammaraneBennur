@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "166569429852",
+    "project_id": "namma-ranebennur-production",
+    "storage_bucket": "namma-ranebennur-production.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:166569429852:android:aed605af44d74bf4c6cf99",
+        "android_client_info": {
+          "package_name": "in.nammarane.bennur"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAJI4AbkjfTvb1nkyicLOh8VOQYuZTVQHc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

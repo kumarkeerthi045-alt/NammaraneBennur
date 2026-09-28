@@ -1,0 +1,391 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function owns(uid) { return signedIn() && request.auth.uid == uid; }
+    function adminRecord() { return get(/databases/$(database)/documents/adminUsers/$(request.auth.uid)); }
+    function activeAdmin() { return signedIn() && adminRecord().data.active == true; }
+    function hasAdminRole(roles) { return activeAdmin() && adminRecord().data.role in roles; }
+    function superAdmin() { return hasAdminRole(['super_admin']); }
+    function bookingAdmin() { return hasAdminRole(['super_admin', 'booking_admin']); }
+    function marketTravelAdmin() { return hasAdminRole(['super_admin', 'market_travel_admin']); }
+    function counterRecord(counterId) {
+      return get(/databases/$(database)/documents/bookingCounters/$(counterId));
+    }
+    function approvedCounter(counterId) {
+      return signedIn()
+        && counterId is string
+        && counterRecord(counterId).data.ownerUid == request.auth.uid
+        && counterRecord(counterId).data.registrationStatus == 'approved';
+    }
+    function driverRecord() {
+      return get(/databases/$(database)/documents/driverPartners/$(request.auth.uid));
+    }
+    function approvedDriver() {
+      return signedIn()
+        && driverRecord().data.ownerUid == request.auth.uid
+        && driverRecord().data.registrationStatus == 'approved';
+    }
+    function serviceProviderRecord() {
+      return get(/databases/$(database)/documents/serviceProviderRequests/$(request.auth.uid));
+    }
+    function approvedServiceProvider() {
+      return signedIn()
+        && serviceProviderRecord().data.uid == request.auth.uid
+        && serviceProviderRecord().data.status == 'approved';
+    }
+    function bookingCategory(data) {
+      return data.category in ['hotels', 'hotel', 'Hotel', 'halls', 'function_hall', 'Function Hall', 'clinic', 'Clinic', 'home_services', 'Home Services', 'catering', 'Catering'];
+    }
+    function marketTravelCategory(data) {
+      return data.category in ['travel', 'Travel', 'delivery', 'Nimma Sevaka', 'machinery', 'Machinery', 'market', 'Market'];
+    }
+    match /adminUsers/{uid} {
+      allow read: if owns(uid) || hasAdminRole(['super_admin']);
+      allow create: if superAdmin();
+      allow update: if superAdmin()
+        && (uid != request.auth.uid
+          || (request.resource.data.active == true && request.resource.data.role == resource.data.role));
+      allow delete: if superAdmin() && uid != request.auth.uid;
+    }
+    match /users/{uid} {
+      allow create: if owns(uid) && request.resource.data.userId == request.auth.uid && request.resource.data.role in ['user', 'Customer', 'Provider'];
+      allow read: if owns(uid) || activeAdmin();
+      allow update: if (owns(uid) && !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'serviceProviderId', 'isActive', 'adminRole'])) || activeAdmin();
+      allow delete: if hasAdminRole(['super_admin']);
+    }
+    match /serviceProviderRequests/{id} {
+      allow create: if signedIn() && id == request.auth.uid && request.resource.data.uid == request.auth.uid && request.resource.data.status == 'pending';
+      allow read: if bookingAdmin() || (signedIn() && resource.data.uid == request.auth.uid);
+      allow update: if bookingAdmin()
+        || (signedIn()
+          && resource.data.uid == request.auth.uid
+          && request.resource.data.uid == request.auth.uid
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['availability', 'updatedAt']));
+      allow delete: if hasAdminRole(['super_admin']);
+    }
+    match /serviceProviders/{id} {
+      allow read: if signedIn();
+      allow create, update: if superAdmin() || bookingAdmin();
+      allow delete: if superAdmin();
+    }
+    match /orders/{id} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if superAdmin()
+        || (bookingAdmin() && bookingCategory(resource.data))
+        || (marketTravelAdmin() && marketTravelCategory(resource.data))
+        || (signedIn() && resource.data.userId == request.auth.uid)
+        || approvedCounter(resource.data.get('counterId', ''))
+        || (approvedDriver() && resource.data.get('driverId', '') == request.auth.uid);
+      allow update: if superAdmin()
+        || (bookingAdmin() && bookingCategory(resource.data))
+        || (marketTravelAdmin() && marketTravelCategory(resource.data))
+        || (approvedCounter(resource.data.get('counterId', ''))
+          && request.resource.data.counterId == resource.data.counterId
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'quotedFare', 'advanceAmount', 'advancePaymentStatus', 'quoteStatus', 'updatedAt']))
+        || (approvedDriver()
+          && request.resource.data.driverId == request.auth.uid
+          && request.resource.data.status in ['assigned', 'arrived', 'in_progress', 'picked_up', 'completed', 'cancelled']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'driverId', 'updatedAt'])
+          && ((resource.data.get('driverId', '') == request.auth.uid)
+            || (resource.data.get('driverId', null) == null
+              && getAfter(/databases/$(database)/documents/driverJobs/$(id)).data.assignedDriverId == request.auth.uid)));
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && ((resource.data.status in ['pending', 'awaiting_customer', 'awaiting_advance']
+            && request.resource.data.status == 'cancelled'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']))
+          || (resource.data.quoteStatus == 'awaiting_customer'
+            && request.resource.data.quoteStatus == 'accepted'
+            && request.resource.data.quoteAccepted == true
+            && request.resource.data.status == 'awaiting_advance'
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'quoteStatus', 'quoteAccepted', 'updatedAt'])));
+      allow delete: if superAdmin();
+    }
+    match /announcements/{id} {
+      allow read: if resource.data.published == true || activeAdmin();
+      allow write: if activeAdmin();
+    }
+    match /cityEvents/{id} {
+      allow read: if resource.data.published == true || activeAdmin();
+      allow write: if activeAdmin();
+    }
+    match /marketProducts/{id} {
+      allow read: if signedIn();
+      allow write: if marketTravelAdmin();
+    }
+    match /marketProductPrivate/{id} {
+      allow read, write: if marketTravelAdmin();
+    }
+    match /marketOrders/{id} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if marketTravelAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow update: if marketTravelAdmin();
+      allow delete: if superAdmin();
+    }
+    match /saleListings/{id} {
+      allow read: if activeAdmin() || (signedIn() && (resource.data.status in ['trial_live', 'verified_free', 'payment_pending', 'paid_active'] || resource.data.sellerId == request.auth.uid));
+      allow create: if signedIn()
+        && request.resource.data.sellerId == request.auth.uid
+        && request.resource.data.status == 'trial_live'
+        && request.resource.data.contactVisible == false
+        && !request.resource.data.keys().hasAny(['sellerPhone']);
+      allow update: if activeAdmin()
+        || (signedIn()
+          && resource.data.sellerId == request.auth.uid
+          && request.resource.data.sellerId == request.auth.uid
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.contactVisible == resource.data.contactVisible
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['title', 'description', 'price', 'area', 'condition', 'purchaseYear', 'updatedAt']))
+        // Seller self-requests the paid ₹100 activation (mirrors the master's
+        // seller-initiated "Pay ₹100" action). Only trial/free-verified listings
+        // may request it, and the seller cannot grant paid_active themselves —
+        // only an admin can move a listing into paid_active.
+        || (signedIn()
+          && resource.data.sellerId == request.auth.uid
+          && request.resource.data.sellerId == request.auth.uid
+          && resource.data.status in ['trial_live', 'verified_free']
+          && request.resource.data.status == 'payment_pending'
+          && request.resource.data.contactVisible == resource.data.contactVisible
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']))
+        || (signedIn()
+          && resource.data.sellerId != request.auth.uid
+          && resource.data.status in ['trial_live', 'verified_free', 'paid_active']
+          && request.resource.data.interestCount == resource.data.interestCount + 1
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['interestCount', 'updatedAt'])
+          && getAfter(/databases/$(database)/documents/saleInterests/$(id + '_' + request.auth.uid)).data.buyerId == request.auth.uid);
+      allow delete: if activeAdmin() || (signedIn() && resource.data.sellerId == request.auth.uid);
+    }
+    match /saleListingPrivate/{id} {
+      allow create: if signedIn()
+        && request.resource.data.sellerId == request.auth.uid
+        && request.resource.data.listingId == id;
+      allow read: if activeAdmin() || (signedIn() && resource.data.sellerId == request.auth.uid);
+      allow update: if activeAdmin() || (signedIn() && resource.data.sellerId == request.auth.uid && request.resource.data.sellerId == request.auth.uid);
+      allow delete: if activeAdmin() || (signedIn() && resource.data.sellerId == request.auth.uid);
+    }
+    match /saleInterests/{id} {
+      allow create: if signedIn()
+        && request.resource.data.buyerId == request.auth.uid
+        && request.resource.data.listingId is string
+        && get(/databases/$(database)/documents/saleListings/$(request.resource.data.listingId)).data.sellerId != request.auth.uid;
+      // Sellers must only ever see a protected interest COUNT (saleListings.interestCount),
+      // never buyer identity — so a seller (unlike the buyer or an admin) is not granted
+      // read access to the saleInterests documents themselves.
+      allow read: if activeAdmin() || (signedIn() && resource.data.buyerId == request.auth.uid);
+      allow update, delete: if false;
+    }
+    match /requirements/{id} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if activeAdmin()
+        || (signedIn() && resource.data.userId == request.auth.uid)
+        || (approvedServiceProvider() && resource.data.status in ['pending', 'approved', 'open']);
+      allow update: if activeAdmin()
+        || (signedIn()
+          && resource.data.userId == request.auth.uid
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.status in ['matched', 'cancelled', 'closed']
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'acceptedQuoteId', 'updatedAt']));
+      allow delete: if activeAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+    }
+    match /providerQuotes/{id} {
+      allow create: if approvedServiceProvider()
+        && request.resource.data.providerUid == request.auth.uid
+        && request.resource.data.status == 'submitted'
+        && get(/databases/$(database)/documents/requirements/$(request.resource.data.requirementId)).data.status in ['pending', 'approved', 'open'];
+      allow read: if activeAdmin()
+        || (signedIn() && resource.data.providerUid == request.auth.uid)
+        || (signedIn() && get(/databases/$(database)/documents/requirements/$(resource.data.requirementId)).data.userId == request.auth.uid);
+      allow update: if activeAdmin()
+        || (signedIn()
+          && get(/databases/$(database)/documents/requirements/$(resource.data.requirementId)).data.userId == request.auth.uid
+          && resource.data.status == 'submitted'
+          && request.resource.data.status in ['accepted', 'rejected']
+          && (request.resource.data.status != 'accepted'
+            || (getAfter(/databases/$(database)/documents/requirements/$(resource.data.requirementId)).data.status == 'matched'
+              && getAfter(/databases/$(database)/documents/requirements/$(resource.data.requirementId)).data.acceptedQuoteId == id))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'serviceStatus', 'acceptedAt', 'updatedAt']))
+        || (approvedServiceProvider()
+          && resource.data.providerUid == request.auth.uid
+          && resource.data.status == 'accepted'
+          && request.resource.data.status == resource.data.status
+          && request.resource.data.serviceStatus in ['confirmed', 'in_progress', 'completed']
+          && ((resource.data.get('serviceStatus', 'awaiting_provider') == 'awaiting_provider' && request.resource.data.serviceStatus == 'confirmed')
+            || (resource.data.serviceStatus == 'confirmed' && request.resource.data.serviceStatus == 'in_progress')
+            || (resource.data.serviceStatus == 'in_progress' && request.resource.data.serviceStatus == 'completed'))
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['serviceStatus', 'updatedAt']));
+      allow delete: if superAdmin();
+    }
+    match /advertisements/{id} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'pending';
+      allow read: if activeAdmin() || (signedIn() && (resource.data.userId == request.auth.uid || resource.data.status == 'approved'));
+      allow update: if activeAdmin();
+      allow delete: if activeAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+    }
+    match /adminActivity/{id} {
+      allow create: if activeAdmin();
+      allow read: if superAdmin();
+      allow update, delete: if false;
+    }
+    match /platformSettings/{id} {
+      allow read: if signedIn();
+      allow write: if superAdmin();
+    }
+    match /businesses/{id} {
+      allow read: if signedIn();
+      allow create: if approvedCounter(request.resource.data.counterId)
+        || superAdmin()
+        || (bookingAdmin() && bookingCategory(request.resource.data))
+        || (marketTravelAdmin() && marketTravelCategory(request.resource.data));
+      allow update: if approvedCounter(resource.data.counterId)
+          && request.resource.data.counterId == resource.data.counterId
+        || superAdmin()
+        || (bookingAdmin() && bookingCategory(request.resource.data))
+        || (marketTravelAdmin() && marketTravelCategory(request.resource.data));
+      allow delete: if approvedCounter(resource.data.counterId) || superAdmin();
+    }
+    match /providerSlots/{id} {
+      allow read: if signedIn();
+      allow create: if approvedCounter(request.resource.data.counterId) || bookingAdmin();
+      allow update: if (approvedCounter(resource.data.counterId)
+          && request.resource.data.counterId == resource.data.counterId)
+        || bookingAdmin();
+      allow delete: if approvedCounter(resource.data.counterId) || superAdmin();
+    }
+    match /bookingCounters/{id} {
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid && request.resource.data.registrationStatus == 'pending';
+      allow read: if bookingAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow update: if bookingAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid && request.resource.data.ownerUid == request.auth.uid && request.resource.data.registrationStatus == resource.data.registrationStatus);
+      allow delete: if superAdmin();
+    }
+    match /driverPartners/{id} {
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid && request.resource.data.registrationStatus == 'pending';
+      allow read: if marketTravelAdmin() || (signedIn() && resource.data.ownerUid == request.auth.uid);
+      allow update: if marketTravelAdmin() || (signedIn()
+        && resource.data.ownerUid == request.auth.uid
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.registrationStatus == resource.data.registrationStatus
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['online', 'updatedAt']));
+      allow delete: if superAdmin();
+    }
+    match /driverJobs/{id} {
+      allow create: if marketTravelAdmin()
+        || (signedIn()
+          && request.resource.data.orderId == id
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.assignedDriverId == null
+          && getAfter(/databases/$(database)/documents/orders/$(id)).data.userId == request.auth.uid);
+      allow read: if marketTravelAdmin()
+        || (signedIn() && resource.data.createdBy == request.auth.uid)
+        || (approvedDriver() && resource.data.vehicleType == driverRecord().data.vehicleType);
+      allow update: if marketTravelAdmin()
+        || (approvedDriver()
+          && resource.data.vehicleType == driverRecord().data.vehicleType
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'assignedDriverId', 'updatedAt'])
+          && request.resource.data.assignedDriverId == request.auth.uid
+          && request.resource.data.status in ['assigned', 'arrived', 'in_progress', 'picked_up', 'completed', 'cancelled']
+          && ((resource.data.assignedDriverId == request.auth.uid)
+            || (resource.data.assignedDriverId == null
+              && resource.data.status == 'pending'
+              && request.resource.data.status == 'assigned'
+              && getAfter(/databases/$(database)/documents/orders/$(id)).data.driverId == request.auth.uid)))
+        || (signedIn()
+          && resource.data.createdBy == request.auth.uid
+          && resource.data.status == 'pending'
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']));
+      allow delete: if superAdmin();
+    }
+    match /tripShares/{code} {
+      allow create: if signedIn()
+        && request.resource.data.ownerUid == request.auth.uid
+        && request.resource.data.shareCode == code
+        && getAfter(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.userId == request.auth.uid;
+      allow get: if signedIn();
+      allow list: if false;
+      allow update: if marketTravelAdmin()
+        || (approvedDriver()
+          && getAfter(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.driverId == request.auth.uid
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']))
+        || (signedIn()
+          && resource.data.ownerUid == request.auth.uid
+          && request.resource.data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt']));
+      allow delete: if superAdmin();
+    }
+    match /trustedContacts/{id} {
+      allow create: if signedIn() && request.resource.data.ownerUid == request.auth.uid;
+      allow read: if signedIn() && resource.data.ownerUid == request.auth.uid;
+      allow update: if signedIn() && resource.data.ownerUid == request.auth.uid && request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
+    }
+    match /payments/{id} {
+      allow create: if superAdmin() || bookingAdmin() || marketTravelAdmin()
+        || (approvedCounter(request.resource.data.counterId)
+          && request.resource.data.orderId == id
+          && request.resource.data.status == 'verified'
+          && request.resource.data.method == 'manual'
+          && getAfter(/databases/$(database)/documents/orders/$(id)).data.counterId == request.resource.data.counterId
+          && getAfter(/databases/$(database)/documents/orders/$(id)).data.status == 'confirmed'
+          && getAfter(/databases/$(database)/documents/orders/$(id)).data.advancePaymentStatus == 'verified_manually'
+          && getAfter(/databases/$(database)/documents/orders/$(id)).data.advanceAmount == request.resource.data.amount
+          && getAfter(/databases/$(database)/documents/orders/$(id)).data.userId == request.resource.data.userId);
+      allow read: if superAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow update, delete: if superAdmin();
+    }
+    match /driverSettlements/{id} {
+      allow create: if approvedDriver()
+        && request.resource.data.driverId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && getAfter(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.driverId == request.auth.uid
+        && getAfter(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.status == 'completed'
+        && request.resource.data.commissionAmount == driverRecord().data.commissionPerTrip
+        && request.resource.data.grossAmount == getAfter(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.get('quotedFare', getAfter(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.get('estimatedFare', 0))
+        && request.resource.data.netPayable == request.resource.data.grossAmount - request.resource.data.commissionAmount;
+      allow read: if superAdmin() || marketTravelAdmin() || (signedIn() && resource.data.driverId == request.auth.uid);
+      allow update: if superAdmin() || (marketTravelAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'updatedAt', 'updatedBy'])
+        && request.resource.data.status in ['approved', 'paid', 'rejected']);
+      allow delete: if superAdmin();
+    }
+    match /complaints/{id} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'open';
+      allow read: if activeAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow update: if activeAdmin();
+      allow delete: if superAdmin();
+    }
+    match /posts/{id} {
+      allow read: if signedIn() && (resource.data.status == 'approved' || resource.data.published == true || resource.data.userId == request.auth.uid || activeAdmin());
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid && request.resource.data.status == 'pending';
+      allow update: if activeAdmin() || (signedIn() && resource.data.userId == request.auth.uid && request.resource.data.userId == request.auth.uid && request.resource.data.status == resource.data.status);
+      allow delete: if activeAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+    }
+    match /notifications/{id} {
+      allow create: if activeAdmin();
+      allow read, update, delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+    match /service_requests/{id} {
+      allow create: if signedIn() && request.resource.data.userId == request.auth.uid;
+      allow read: if activeAdmin() || (signedIn() && resource.data.userId == request.auth.uid);
+      allow update: if activeAdmin();
+      allow delete: if superAdmin();
+    }
+    match /vibeTownSlotLocks/{id} {
+      allow read: if signedIn();
+      allow create: if signedIn()
+        && request.resource.data.active == true
+        && getAfter(/databases/$(database)/documents/orders/$(request.resource.data.orderId)).data.userId == request.auth.uid;
+      allow update: if superAdmin()
+        || (signedIn()
+          && resource.data.active == true
+          && request.resource.data.active == false
+          && getAfter(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.userId == request.auth.uid
+          && getAfter(/databases/$(database)/documents/orders/$(resource.data.orderId)).data.status == 'cancelled'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['active', 'releasedAt']));
+      allow delete: if superAdmin();
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -1,0 +1,45 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function signedIn() { return request.auth != null; }
+    function activeAdmin() {
+      return signedIn()
+        && firestore.get(/databases/(default)/documents/adminUsers/$(request.auth.uid)).data.active == true;
+    }
+    function adminRole() {
+      return firestore.get(/databases/(default)/documents/adminUsers/$(request.auth.uid)).data.role;
+    }
+    function superAdmin() { return activeAdmin() && adminRole() == 'super_admin'; }
+    function bookingAdmin() { return activeAdmin() && adminRole() in ['super_admin', 'booking_admin']; }
+    function marketTravelAdmin() { return activeAdmin() && adminRole() in ['super_admin', 'market_travel_admin']; }
+    match /users/{uid}/{allPaths=**} {
+      allow read: if signedIn() && (request.auth.uid == uid || superAdmin());
+      allow write: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+    match /bookingCounters/{uid}/{allPaths=**} {
+      allow read: if signedIn() && (request.auth.uid == uid || bookingAdmin());
+      allow write: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+    match /driverPartners/{uid}/{allPaths=**} {
+      allow read: if signedIn() && (request.auth.uid == uid || marketTravelAdmin());
+      allow write: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*|application/pdf');
+    }
+    match /saleListings/{uid}/{allPaths=**} {
+      allow read: if signedIn();
+      allow write: if signedIn() && request.auth.uid == uid
+        && request.resource.size < 10 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+    match /public/{allPaths=**} {
+      allow read: if true;
+      allow write: if activeAdmin();
+    }
+    match /{allPaths=**} { allow read, write: if false; }
+  }
+}
