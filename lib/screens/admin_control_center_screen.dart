@@ -21,11 +21,11 @@ class AdminControlCenterScreen extends StatelessWidget {
       case AdminRole.superAdmin:
         return 'Super Admin';
 
-      case AdminRole.marketplaceAdmin:
-        return 'Marketplace Admin';
+      case AdminRole.marketTravelAdmin:
+        return 'Market & Travel Admin';
 
-      case AdminRole.serviceProviderAdmin:
-        return 'Service Provider Admin';
+      case AdminRole.bookingAdmin:
+        return 'Booking Admin';
     }
   }
 
@@ -38,11 +38,11 @@ class AdminControlCenterScreen extends StatelessWidget {
       case AdminRole.superAdmin:
         return 'Full application control';
 
-      case AdminRole.marketplaceAdmin:
-        return 'Marketplace management';
+      case AdminRole.marketTravelAdmin:
+        return 'Marketplace and travel management';
 
-      case AdminRole.serviceProviderAdmin:
-        return 'Service provider management';
+      case AdminRole.bookingAdmin:
+        return 'Bookings and service provider management';
     }
   }
 
@@ -53,11 +53,11 @@ class AdminControlCenterScreen extends StatelessWidget {
   bool get isSuperAdmin =>
       access.role == AdminRole.superAdmin;
 
-  bool get isMarketplaceAdmin =>
-      access.role == AdminRole.marketplaceAdmin;
+  bool get isMarketTravelAdmin =>
+      access.role == AdminRole.marketTravelAdmin;
 
-  bool get isServiceProviderAdmin =>
-      access.role == AdminRole.serviceProviderAdmin;
+  bool get isBookingAdmin =>
+      access.role == AdminRole.bookingAdmin;
 
   // ================================================================
   // LOGOUT
@@ -427,7 +427,7 @@ class AdminControlCenterScreen extends StatelessWidget {
               // MARKETPLACE ADMIN
               // ====================================================
 
-              else if (isMarketplaceAdmin) ...[
+              else if (isMarketTravelAdmin) ...[
                 featureCard(
                   context: context,
                   icon:
@@ -498,7 +498,7 @@ class AdminControlCenterScreen extends StatelessWidget {
               // SERVICE PROVIDER ADMIN
               // ====================================================
 
-              else if (isServiceProviderAdmin) ...[
+              else if (isBookingAdmin) ...[
                 featureCard(
                   context: context,
                   icon:
@@ -591,11 +591,11 @@ class AdminFeaturePlaceholder extends StatelessWidget {
       case AdminRole.superAdmin:
         return 'Super Admin';
 
-      case AdminRole.marketplaceAdmin:
-        return 'Marketplace Admin';
+      case AdminRole.marketTravelAdmin:
+        return 'Market & Travel Admin';
 
-      case AdminRole.serviceProviderAdmin:
-        return 'Service Provider Admin';
+      case AdminRole.bookingAdmin:
+        return 'Booking Admin';
     }
   }
 
@@ -694,4 +694,3 @@ class AdminFeaturePlaceholder extends StatelessWidget {
     );
   }
 }
-

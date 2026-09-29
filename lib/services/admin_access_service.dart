@@ -8,17 +8,16 @@ import 'package:firebase_auth/firebase_auth.dart';
 /// superAdmin
 ///     -> Complete control over the application
 ///
-/// marketplaceAdmin
-///     -> Marketplace products, prices, orders and updates
+/// bookingAdmin
+///     -> Bookings, booking partners and service providers
 ///
-/// serviceProviderAdmin
-///     -> "Do Business With Us", service-provider applications
-///        and provider management
+/// marketTravelAdmin
+///     -> Marketplace, delivery and travel management
 ///
 enum AdminRole {
   superAdmin,
-  marketplaceAdmin,
-  serviceProviderAdmin,
+  bookingAdmin,
+  marketTravelAdmin,
 }
 
 /// ===============================================================
@@ -38,11 +37,11 @@ class AdminAccess {
   bool get isSuperAdmin =>
       role == AdminRole.superAdmin;
 
-  bool get isMarketplaceAdmin =>
-      role == AdminRole.marketplaceAdmin;
+  bool get isBookingAdmin =>
+      role == AdminRole.bookingAdmin;
 
-  bool get isServiceProviderAdmin =>
-      role == AdminRole.serviceProviderAdmin;
+  bool get isMarketTravelAdmin =>
+      role == AdminRole.marketTravelAdmin;
 }
 
 /// ===============================================================
@@ -159,11 +158,11 @@ class AdminAccessService {
       case 'super_admin':
         return AdminRole.superAdmin;
 
-      case 'marketplace_admin':
-        return AdminRole.marketplaceAdmin;
+      case 'booking_admin':
+        return AdminRole.bookingAdmin;
 
-      case 'service_provider_admin':
-        return AdminRole.serviceProviderAdmin;
+      case 'market_travel_admin':
+        return AdminRole.marketTravelAdmin;
 
       default:
         return null;
